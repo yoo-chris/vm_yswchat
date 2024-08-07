@@ -27,7 +27,7 @@ pipe = TextClassificationPipeline(
 )
 
 # Kafka Producer 설정
-producer = KafkaProducer(bootstrap_servers='localhost:9092', value_serializer=lambda v: json.dumps(v, ensure_ascii=False).encode('utf-8'))
+#producer = KafkaProducer(bootstrap_servers='localhost:9092', value_serializer=lambda v: json.dumps(v, ensure_ascii=False).encode('utf-8'))
 
 # 메인 페이지 렌더링
 @app.route('/')
@@ -79,6 +79,15 @@ def handle_disconnect():
 
 @socketio.on('message')
 def handle_message(data):
+
+    # 메시지를 비속어 탐지 모델로 분석
+    result = pipe(data['msg'])[0]
+    max_label = max(result, key=lambda x: x['score'])
+
+    # 비속어 여부 및 확률
+    is_offensive = max_label['label']
+    offensive_score = max_label['score'] * 100  # 확률을 백분율로 변환
+
     # 현재 시간을 가져와서 ISO 포맷으로 변환
     timestamp = datetime.utcnow()
     # 메시지를 MongoDB에 저장
@@ -91,13 +100,13 @@ def handle_message(data):
     })
 
     # Kafka에 메시지 전송
-    producer.send('chat_messages', {
-        'username': data['username'],
-        'msg': data['msg'],
-        'timestamp': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
-        'is_offensive': is_offensive,
-        'offensive_score': offensive_score
-    })
+    #producer.send('chat_messages', {
+    #    'username': data['username'],
+    #    'msg': data['msg'],
+    #    'timestamp': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+    #    'is_offensive': is_offensive,
+    #    'offensive_score': offensive_score
+    #})
 
     # 클라이언트에게 메시지와 시간 전송
     emit('message', {

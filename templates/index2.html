@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>Chat History Search</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <link rel="stylesheet" type="text/css" href="../static/styles2.css">
     <style>
         .chat-message {
             border-bottom: 1px solid #ccc;
@@ -47,7 +48,16 @@
             function displayChats(chats) {
                 $('#chatHistory').empty();
                 chats.forEach(function(chat) {
-                    var offensiveClass = chat.is_offensive ? 'offensive' : 'clean';
+                    var offensiveClass;
+
+                    if (chat.is_offensive == 'clean') {
+                        offensiveClass = 'clean';
+                    } 
+                    
+                    else {
+                        offensiveClass = 'offensive';
+                    }
+
                     var message = '<div class="chat-message ' + offensiveClass + '">';
                     message += '<p><strong>' + chat.username + '</strong>: ' + chat.msg + ' (' + chat.timestamp + ')</p>';
                     message += '<p>Label: ' + chat.is_offensive + '</p>';
