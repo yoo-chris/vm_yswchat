@@ -1,13 +1,33 @@
 from flask import Flask, render_template, jsonify
 from flask_socketio import SocketIO, emit
 from flask_pymongo import PyMongo
+from kafka import KafkaProducer
+import json
 from datetime import datetime
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, TextClassificationPipeline
+import torch
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'yswchat'
 app.config["MONGO_URI"] = "mongodb://localhost:27017/chatDB"  # MongoDB URI 설정
 socketio = SocketIO(app)
 mongo = PyMongo(app)
+
+# 비속어 탐지 모델 로드
+model_name = 'smilegate-ai/kor_unsmile'
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForSequenceClassification.from_pretrained(model_name)
+device = 0 if torch.cuda.is_available() else -1  # GPU 사용 가능 여부 확인
+pipe = TextClassificationPipeline(
+    model=model,
+    tokenizer=tokenizer,
+    device=device,
+    return_all_scores=True,
+    function_to_apply='sigmoid'
+)
+
+# Kafka Producer 설정
+producer = KafkaProducer(bootstrap_servers='localhost:9092', value_serializer=lambda v: json.dumps(v, ensure_ascii=False).encode('utf-8'))
 
 # 메인 페이지 렌더링
 @app.route('/')
@@ -41,7 +61,9 @@ def get_user_chats(username):
         return jsonify([{
             'username': chat['username'],
             'msg': chat['message'],
-            'timestamp': chat['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
+            'timestamp': chat['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
+            'is_offensive': chat['is_offensive'],
+            'offensive_score': chat['offensive_score']
         } for chat in chats])
     except Exception as e:
         return str(e)
@@ -63,13 +85,27 @@ def handle_message(data):
     mongo.db.chats.insert_one({
         'username': data['username'],
         'message': data['msg'],
-        'timestamp': timestamp
+        'timestamp': timestamp,
+        'is_offensive': is_offensive,
+        'offensive_score': offensive_score
     })
+
+    # Kafka에 메시지 전송
+    producer.send('chat_messages', {
+        'username': data['username'],
+        'msg': data['msg'],
+        'timestamp': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+        'is_offensive': is_offensive,
+        'offensive_score': offensive_score
+    })
+
     # 클라이언트에게 메시지와 시간 전송
     emit('message', {
         'username': data['username'],
         'msg': data['msg'],
-        'timestamp': timestamp.strftime('%Y-%m-%d %H:%M:%S')
+        'timestamp': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+        'is_offensive': is_offensive,
+        'offensive_score': offensive_score
     }, broadcast=True)
 
 if __name__ == '__main__':
